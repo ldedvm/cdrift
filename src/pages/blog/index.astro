@@ -1,11 +1,12 @@
 ---
-import { Image } from 'astro:assets';
 import { getCollection } from 'astro:content';
 import BaseHead from '../../components/BaseHead.astro';
 import Footer from '../../components/Footer.astro';
 import FormattedDate from '../../components/FormattedDate.astro';
 import Header from '../../components/Header.astro';
-import { SITE_DESCRIPTION, SITE_TITLE } from '../../consts';
+import Reveal from '../../components/Reveal.astro';
+import SkyLight from '../../components/SkyLight.astro';
+import { SITE_TITLE, withBase } from '../../consts';
 
 const posts = (await getCollection('blog')).sort(
 	(a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
@@ -13,102 +14,215 @@ const posts = (await getCollection('blog')).sort(
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 	<head>
-		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
-		<style>
-			main {
-				width: 960px;
-			}
-			ul {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 2rem;
-				list-style-type: none;
-				margin: 0;
-				padding: 0;
-			}
-			ul li {
-				width: calc(50% - 1rem);
-			}
-			ul li * {
-				text-decoration: none;
-				transition: 0.2s ease;
-			}
-			ul li:first-child {
-				width: 100%;
-				margin-bottom: 1rem;
-				text-align: center;
-			}
-			ul li:first-child img {
-				width: 100%;
-			}
-			ul li:first-child .title {
-				font-size: 2.369rem;
-			}
-			ul li img {
-				margin-bottom: 0.5rem;
-				border-radius: 12px;
-			}
-			ul li a {
-				display: block;
-			}
-			.title {
-				margin: 0;
-				color: rgb(var(--black));
-				line-height: 1;
-			}
-			.date {
-				margin: 0;
-				color: rgb(var(--gray));
-			}
-			ul li a:hover h4,
-			ul li a:hover .date {
-				color: rgb(var(--accent));
-			}
-			ul a:hover img {
-				box-shadow: var(--box-shadow);
-			}
-			@media (max-width: 720px) {
-				ul {
-					gap: 0.5em;
-				}
-				ul li {
-					width: 100%;
-					text-align: center;
-				}
-				ul li:first-child {
-					margin-bottom: 0;
-				}
-				ul li:first-child .title {
-					font-size: 1.563em;
-				}
-			}
-		</style>
+		<BaseHead title={`笔记 · ${SITE_TITLE}`} description={`${SITE_TITLE} 的全部笔记`} />
 	</head>
 	<body>
 		<Header />
-		<main>
-			<section>
-				<ul>
-					{
-						posts.map((post) => (
-							<li>
-								<a href={`/blog/${post.id}/`}>
-									{post.data.heroImage && (
-										<Image width={720} height={360} src={post.data.heroImage} alt="" />
+		<SkyLight />
+		<main class="wrap">
+			<p class="label reveal">全部笔记 · Notes</p>
+			<h1 class="reveal" style="--reveal-delay: 0.06s">
+				笔记 <span class="count">{posts.length}</span>
+			</h1>
+			<div class="search reveal" style="--reveal-delay: 0.1s">
+				<input
+					id="note-search"
+					type="search"
+					placeholder="搜索标题、摘要或标签…（按 / 快速聚焦）"
+					autocomplete="off"
+				/>
+				<span class="s-count">{posts.length} 篇</span>
+			</div>
+			<ul class="rows">
+				{
+					posts.map((post, i) => (
+						<li class="reveal" style={`--reveal-delay: ${Math.min(i * 0.06, 0.3)}s`}>
+							<a href={withBase(`/blog/${post.id}/`)}>
+								<span class="idx">{String(i + 1).padStart(2, '0')}</span>
+								<div class="body">
+									<h3>{post.data.title}</h3>
+									<p class="desc">{post.data.description}</p>
+									{post.data.tags.length > 0 && (
+										<ul class="tags">
+											{post.data.tags.map((t) => (
+												<li class="tag">{t}</li>
+											))}
+										</ul>
 									)}
-									<h4 class="title">{post.data.title}</h4>
-									<p class="date">
-										<FormattedDate date={post.data.pubDate} />
-									</p>
-								</a>
-							</li>
-						))
-					}
-				</ul>
-			</section>
+								</div>
+								<div class="meta">
+									<FormattedDate date={post.data.pubDate} />
+									<span class="arr" aria-hidden="true">→</span>
+								</div>
+							</a>
+						</li>
+					))
+				}
+			</ul>
+			<p class="empty" hidden>没有匹配的笔记，换个关键词试试。</p>
 		</main>
 		<Footer />
+		<Reveal />
+		<script>
+			// 实时搜索：按标题 / 摘要 / 标签过滤，支持 / 快捷键聚焦
+			const input = document.getElementById('note-search');
+			const rows = Array.from(document.querySelectorAll('.rows li'));
+			const countEl = document.querySelector('.s-count');
+			const empty = document.querySelector('.empty');
+
+			if (input) {
+				input.addEventListener('input', () => {
+					const q = input.value.trim().toLowerCase();
+					let shown = 0;
+					for (const li of rows) {
+						const hit = !q || li.textContent.toLowerCase().includes(q);
+						li.style.display = hit ? '' : 'none';
+						if (hit) shown++;
+					}
+					if (countEl) countEl.textContent = `${shown} 篇`;
+					if (empty) empty.hidden = shown > 0;
+				});
+				document.addEventListener('keydown', (e) => {
+					if (e.key === '/' && document.activeElement !== input) {
+						e.preventDefault();
+						input.focus();
+					}
+					if (e.key === 'Escape' && document.activeElement === input) {
+						input.value = '';
+						input.dispatchEvent(new Event('input'));
+						input.blur();
+					}
+				});
+			}
+		</script>
 	</body>
 </html>
+
+<style>
+	h1 {
+		font-size: clamp(2.6rem, 6vw, 4rem);
+		font-weight: 800;
+		margin: 0.3em 0 0.6em;
+	}
+	.count {
+		color: var(--faint);
+		font-size: 0.45em;
+		vertical-align: middle;
+		border: 1px solid var(--hairline);
+		border-radius: 999px;
+		padding: 0.15em 0.7em;
+		margin-left: 0.3em;
+		font-weight: 600;
+	}
+	.search {
+		display: flex;
+		align-items: center;
+		gap: 1em;
+		border-bottom: 1px solid var(--hairline);
+		padding-bottom: 0.7em;
+		margin: 0 0 1.8em;
+	}
+	.search input {
+		flex: 1;
+		background: none;
+		border: none;
+		outline: none;
+		font: inherit;
+		font-size: 1rem;
+		color: var(--text);
+		padding: 0;
+	}
+	.search input::placeholder {
+		color: var(--faint);
+	}
+	.search input::-webkit-search-cancel-button {
+		filter: invert(0.4);
+	}
+	.s-count {
+		color: var(--faint);
+		font-size: 0.78rem;
+		letter-spacing: 0.12em;
+		white-space: nowrap;
+	}
+	.empty {
+		color: var(--faint);
+		padding: 2.5em 0;
+	}
+	.rows {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		border-top: 1px solid var(--hairline-soft);
+	}
+	.rows li {
+		border-bottom: 1px solid var(--hairline-soft);
+	}
+	.rows a {
+		display: flex;
+		align-items: baseline;
+		gap: 1.6em;
+		padding: 1.5em 0;
+		text-decoration: none;
+	}
+	.idx {
+		color: var(--faint);
+		font-size: 0.8rem;
+		letter-spacing: 0.14em;
+		min-width: 2.2em;
+	}
+	.rows .body {
+		flex: 1;
+	}
+	.rows h3 {
+		font-size: 1.45rem;
+		font-weight: 700;
+		margin: 0 0 0.3em;
+		color: var(--muted);
+		transition: color 0.2s ease;
+	}
+	.rows a:hover h3 {
+		color: var(--text);
+	}
+	.rows .desc {
+		color: var(--faint);
+		margin: 0 0 0.6em;
+		font-size: 0.88rem;
+	}
+	.rows .tags {
+		margin: 0;
+	}
+	.meta {
+		color: var(--faint);
+		font-size: 0.78rem;
+		white-space: nowrap;
+		display: flex;
+		align-items: baseline;
+		gap: 0.9em;
+	}
+	.arr {
+		opacity: 0;
+		transform: translateX(-6px);
+		transition: opacity 0.25s ease, transform 0.25s ease;
+		color: var(--text);
+		font-size: 1rem;
+	}
+	.rows a:hover .arr {
+		opacity: 1;
+		transform: none;
+	}
+	@media (max-width: 720px) {
+		.rows a {
+			flex-wrap: wrap;
+			gap: 0.5em;
+		}
+		.rows .body {
+			flex-basis: 100%;
+			order: 3;
+		}
+		.meta {
+			margin-left: auto;
+		}
+	}
+</style>

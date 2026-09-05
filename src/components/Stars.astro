@@ -1,0 +1,82 @@
+---
+// 单色星空背景：细小的白星缓慢闪烁，带轻微滚动视差。
+// 只在首页 Hero 和知识图谱页使用，文章页保持纯黑。
+// 需要父元素 position: relative。
+---
+
+<canvas class="stars-canvas" aria-hidden="true"></canvas>
+
+<style>
+	.stars-canvas {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		display: block;
+		pointer-events: none;
+	}
+</style>
+
+<script>
+	const canvas = document.querySelector('.stars-canvas');
+	if (canvas) {
+		const ctx = canvas.getContext('2d');
+		if (ctx) {
+			let stars = [];
+			let w = 0;
+			let h = 0;
+			let scrollY = window.scrollY;
+
+			function resize() {
+				const rect = canvas.parentElement.getBoundingClientRect();
+				const dpr = Math.min(window.devicePixelRatio || 1, 2);
+				w = rect.width;
+				h = rect.height;
+				canvas.width = w * dpr;
+				canvas.height = h * dpr;
+				ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+				const count = Math.min(340, Math.floor((w * h) / 5200));
+				stars = Array.from({ length: count }, () => {
+					const bright = Math.random() < 0.09;
+					return {
+						x: Math.random() * w,
+						y: Math.random() * h,
+						r: bright ? 1.2 + Math.random() * 0.9 : 0.3 + Math.random() * 1.1,
+						baseAlpha: bright ? 0.7 + Math.random() * 0.3 : 0.15 + Math.random() * 0.5,
+						phase: Math.random() * Math.PI * 2,
+						speed: 0.3 + Math.random() * 1.1,
+						depth: 0.2 + Math.random() * 0.8,
+					};
+				});
+			}
+
+			function draw(t) {
+				ctx.clearRect(0, 0, w, h);
+				for (const s of stars) {
+					const twinkle = 0.6 + 0.4 * Math.sin(s.phase + t * s.speed);
+					const y = (((s.y - scrollY * s.depth * 0.1) % h) + h) % h;
+					ctx.beginPath();
+					ctx.arc(s.x, y, s.r, 0, Math.PI * 2);
+					ctx.fillStyle = `rgba(255, 255, 255, ${(s.baseAlpha * twinkle).toFixed(3)})`;
+					ctx.fill();
+				}
+			}
+
+			window.addEventListener('scroll', () => {
+				scrollY = window.scrollY;
+			}, { passive: true });
+			window.addEventListener('resize', resize);
+			resize();
+
+			if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+				draw(0);
+			} else {
+				const frame = (now) => {
+					draw(now / 1000);
+					requestAnimationFrame(frame);
+				};
+				requestAnimationFrame(frame);
+			}
+		}
+	}
+</script>

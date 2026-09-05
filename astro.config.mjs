@@ -2,34 +2,21 @@
 
 import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
-import { defineConfig, fontProviders } from 'astro/config';
+import { defineConfig } from 'astro/config';
+import remarkWikilinks from './src/plugins/remark-wikilinks.mjs';
+
+// 部署目标：
+// - 现阶段：GitHub Pages 项目站 https://ldedvm.github.io/cdrift/
+// - 绑定自定义域名后：把 site 改成 'https://你的域名'，base 改成 '/'，即可切换
+const SITE = 'https://ldedvm.github.io';
+const BASE = '/cdrift';
 
 // https://astro.build/config
 export default defineConfig({
-	site: 'https://example.com',
+	site: SITE,
+	base: BASE,
 	integrations: [mdx(), sitemap()],
-	fonts: [
-		{
-			provider: fontProviders.local(),
-			name: 'Atkinson',
-			cssVariable: '--font-atkinson',
-			fallbacks: ['sans-serif'],
-			options: {
-				variants: [
-					{
-						src: ['./src/assets/fonts/atkinson-regular.woff'],
-						weight: 400,
-						style: 'normal',
-						display: 'swap',
-					},
-					{
-						src: ['./src/assets/fonts/atkinson-bold.woff'],
-						weight: 700,
-						style: 'normal',
-						display: 'swap',
-					},
-				],
-			},
-		},
-	],
+	markdown: {
+		remarkPlugins: [remarkWikilinks({ base: BASE })],
+	},
 });

@@ -1,0 +1,55 @@
+---
+import BaseHead from '../components/BaseHead.astro';
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+import Stars from '../components/Stars.astro';
+import { SITE_TITLE, withBase } from '../consts';
+---
+
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<BaseHead title={`页面走丢了 · ${SITE_TITLE}`} description="404：这颗星漂出了星系" />
+	</head>
+	<body class="theme-dark">
+		<Header />
+		<main class="lost">
+			<Stars />
+			<div class="inner">
+				<p class="label">404 · Not Found</p>
+				<h1>这颗星漂出了星系。</h1>
+				<p class="lead">你要找的页面不存在——可能被删了，或者从没存在过。</p>
+				<a class="btn" href={withBase('/')}>回到首页 <span class="arr">→</span></a>
+			</div>
+		</main>
+		<Footer />
+	</body>
+</html>
+
+<style>
+	.lost {
+		position: relative;
+		min-height: calc(100vh - 60px);
+		display: flex;
+		align-items: center;
+		overflow: hidden;
+		background: #050505;
+	}
+	.inner {
+		position: relative;
+		z-index: 1;
+		max-width: var(--maxw);
+		margin: 0 auto;
+		padding: 0 1.5em;
+		width: 100%;
+	}
+	h1 {
+		font-size: clamp(2.2rem, 5vw, 3.6rem);
+		font-weight: 800;
+		margin: 0.4em 0 0.4em;
+	}
+	.lead {
+		color: var(--muted);
+		margin: 0 0 2.2em;
+	}
+</style>

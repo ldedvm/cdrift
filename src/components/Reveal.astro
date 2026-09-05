@@ -1,0 +1,31 @@
+---
+// 滚动浮现观察器：给 class="reveal" 的元素在进入视口时加上 is-visible。
+// 容器标记 data-reveal-children 时，其直接子元素自动批量参与（用于文章正文逐段浮现）。
+---
+
+<script>
+	document.querySelectorAll('[data-reveal-children]').forEach((parent) => {
+		Array.from(parent.children).forEach((child, i) => {
+			child.classList.add('reveal');
+			child.style.setProperty('--reveal-delay', `${Math.min(i * 0.04, 0.2)}s`);
+		});
+	});
+
+	const revealEls = document.querySelectorAll('.reveal');
+	if ('IntersectionObserver' in window) {
+		const io = new IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					if (entry.isIntersecting) {
+						entry.target.classList.add('is-visible');
+						io.unobserve(entry.target);
+					}
+				}
+			},
+			{ threshold: 0.08, rootMargin: '0px 0px -5% 0px' }
+		);
+		revealEls.forEach((el) => io.observe(el));
+	} else {
+		revealEls.forEach((el) => el.classList.add('is-visible'));
+	}
+</script>

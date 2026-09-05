@@ -1,49 +1,600 @@
 ---
+import { getCollection } from 'astro:content';
 import BaseHead from '../components/BaseHead.astro';
+import FloatCards from '../components/FloatCards.astro';
 import Footer from '../components/Footer.astro';
+import Galaxy3D from '../components/Galaxy3D.astro';
 import Header from '../components/Header.astro';
-import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
+import MiniGraph from '../components/MiniGraph.astro';
+import Reveal from '../components/Reveal.astro';
+import SkyLight from '../components/SkyLight.astro';
+import Ticker from '../components/Ticker.astro';
+import FormattedDate from '../components/FormattedDate.astro';
+import { buildGraph } from '../lib/graph.js';
+import { SITE_DESCRIPTION, SITE_TITLE, withBase } from '../consts';
+
+const posts = (await getCollection('blog')).sort(
+	(a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
+);
+const latest = posts.slice(0, 4);
+const { nodes, links } = buildGraph(posts);
+const tagSet = [...new Set(posts.flatMap((p) => p.data.tags ?? []))]; // 全站统计用
+
+// 迷你图谱：只挑一部分节点做预览（演示星座 + 两个课程枢纽 + 各抽 6 篇），
+// 全量 120 个节点会糊成一团，这里要的是"网络感"而不是全量
+const previewCore = [
+	'hello-cdrift',
+	'how-to-note',
+	'markdown-style-guide',
+	'fastapi-课程目录',
+	'电子元器件-课程目录',
+];
+const pickEvery = (arr, n) =>
+	arr.filter((_, i) => i % Math.max(1, Math.ceil(arr.length / n)) === 0).slice(0, n);
+const fastSample = pickEvery(
+	posts.filter((p) => (p.data.tags ?? []).includes('FastAPI') && !p.id.includes('课程目录')),
+	6,
+);
+const hardSample = pickEvery(
+	posts.filter((p) => (p.data.tags ?? []).includes('电子元器件') && !p.id.includes('课程目录')),
+	6,
+);
+const previewIds = new Set([
+	...previewCore,
+	...fastSample.map((p) => p.id),
+	...hardSample.map((p) => p.id),
+]);
+const previewPosts = posts.filter((p) => previewIds.has(p.id));
+const pg = buildGraph(previewPosts);
+const tagSetP = [...new Set(previewPosts.flatMap((p) => p.data.tags ?? []))];
+const miniNodes = [
+	...pg.nodes.map((n) => ({ ...n, kind: 'note' })),
+	...tagSetP.map((t) => ({ id: `tag:${t}`, title: `#${t}`, kind: 'tag' })),
+];
+const miniLinks = [
+	...pg.links,
+	...previewPosts.flatMap((p) =>
+		(p.data.tags ?? []).map((t) => ({ source: p.id, target: `tag:${t}` })),
+	),
+];
+
+// 学习轨迹：两个课程 + 演示笔记的里程碑（按 id 找，找不到自动跳过）
+const wanted = [
+	['hello-cdrift', '起点'],
+	['fastapi-课程目录', 'FastAPI 课程'],
+	['02-fastapi基础入门-fastapi框架简介', 'FastAPI 02'],
+	['16-fastapi进阶-依赖注入', 'FastAPI 16'],
+	['29-fastapi进阶-orm总结', 'FastAPI 29'],
+	['电子元器件-课程目录', '元器件课程'],
+	['03_电流', '元器件 03'],
+	['08_欧姆定律', '元器件 08'],
+	['86_三极管_vs_mos管', '元器件 86'],
+	['how-to-note', '写作约定'],
+];
+const milestones = wanted
+	.map(([id, tag]) => {
+		const post = posts.find((p) => p.id === id);
+		return post ? { post, tag } : null;
+	})
+	.filter(Boolean);
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 	<head>
 		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
 	</head>
 	<body>
 		<Header />
-		<main>
-			<h1>🧑‍🚀 Hello, Astronaut!</h1>
-			<p>
-				Welcome to the official <a href="https://astro.build/">Astro</a> blog starter template. This template
-				serves as a lightweight, minimally-styled starting point for anyone looking to build a personal
-				website, blog, or portfolio with Astro.
-			</p>
-			<p>
-				This template comes with a few integrations already configured in your
-				<code>astro.config.mjs</code> file. You can customize your setup with
-				<a href="https://astro.build/integrations">Astro Integrations</a> to add tools like Tailwind,
-				React, or Vue to your project.
-			</p>
-			<p>Here are a few ideas on how to get started with the template:</p>
-			<ul>
-				<li>Edit this page in <code>src/pages/index.astro</code></li>
-				<li>Edit the site header items in <code>src/components/Header.astro</code></li>
-				<li>Add your name to the footer in <code>src/components/Footer.astro</code></li>
-				<li>Check out the included blog posts in <code>src/content/blog/</code></li>
-				<li>Customize the blog post page layout in <code>src/layouts/BlogPost.astro</code></li>
-			</ul>
-			<p>
-				Have fun! If you get stuck, remember to
-				<a href="https://docs.astro.build/">read the docs</a>
-				or <a href="https://astro.build/chat">join us on Discord</a> to ask questions.
-			</p>
-			<p>
-				Looking for a blog template with a bit more personality? Check out
-				<a href="https://github.com/Charca/astro-blog-template">astro-blog-template</a>
-				by <a href="https://twitter.com/Charca">Maxi Ferreira</a>.
-			</p>
-		</main>
-		<Footer />
+		<SkyLight />
+
+		<!-- 深空首屏：钉扎 240vh，星系满屏停留更久，随后收缩成圆角卡片被浅色正文盖上 -->
+		<div class="hero-pin">
+			<section class="hero theme-dark">
+				<Galaxy3D />
+				<div class="hero-inner">
+					<p class="label reveal">CD 的个人知识库</p>
+					<h1 class="reveal" style="--reveal-delay: 0.08s">记录<br />思考<br />连接</h1>
+					<p class="lead reveal" style="--reveal-delay: 0.16s">
+						这里是我公开的笔记库。笔记之间用双链相互引用，连成一张不断生长的知识网络。
+					</p>
+					<div class="actions reveal" style="--reveal-delay: 0.24s">
+						<a class="btn" href="#latest">浏览笔记 <span class="arr">→</span></a>
+						<a class="btn text" href={withBase('/graph/')}>知识图谱 →</a>
+					</div>
+				</div>
+				<a class="scroll-hint" href="#latest" aria-label="向下滚动">↓</a>
+			</section>
+		</div>
+
+		<div class="page">
+			<Ticker />
+
+			<section class="panel" id="latest">
+				<FloatCards />
+				<div class="wrap sec-inner">
+					<p class="label reveal">01 · 最新笔记 Latest</p>
+					<ul class="stats reveal" style="--reveal-delay: 0.08s" id="site-stats">
+						<li>
+							<strong data-count={posts.length}>{posts.length}</strong>
+							<span>篇笔记</span>
+						</li>
+						<li>
+							<strong data-count={links.length}>{links.length}</strong>
+							<span>条双链</span>
+						</li>
+						<li>
+							<strong data-count={tagSet.length}>{tagSet.length}</strong>
+							<span>个标签</span>
+						</li>
+					</ul>
+					<ul class="rows">
+						{
+							latest.map((post, i) => (
+								<li class="reveal" style={`--reveal-delay: ${i * 0.08}s`}>
+								<a href={withBase(`/blog/${post.id}/`)}>
+									<div>
+										<h3>{post.data.title}</h3>
+										<p class="desc">{post.data.description}</p>
+									</div>
+									<div class="meta">
+										<FormattedDate date={post.data.pubDate} />
+										<span class="arr" aria-hidden="true">→</span>
+									</div>
+									</a>
+								</li>
+							))
+						}
+					</ul>
+					<a class="btn reveal" href={withBase('/blog/')}>全部笔记 <span class="arr">→</span></a>
+				</div>
+			</section>
+
+			<!-- 横向时间线：竖向滚动驱动横向拉取 -->
+			<section class="h-scroll" id="timeline">
+				<div class="h-sticky">
+					<div class="wrap h-head">
+						<p class="label reveal">02 · 学习轨迹 Timeline</p>
+						<h2 class="statement reveal">一路学过来的脚印。</h2>
+						<p class="hint reveal">继续向下滚动，卡片会横向滑动 →</p>
+						<div class="h-progress reveal">
+							<i></i>
+						</div>
+					</div>
+					<div class="h-track">
+						{
+							milestones.map(({ post, tag }, i) => (
+								<a class="h-card" href={withBase(`/blog/${post.id}/`)}>
+									<span class="num">{String(i + 1).padStart(2, '0')}</span>
+									<span class="tag">{tag}</span>
+									<h3>{post.data.title}</h3>
+									<p class="desc">{post.data.description}</p>
+									<span class="more">阅读 →</span>
+								</a>
+							))
+						}
+					</div>
+				</div>
+			</section>
+
+			<section class="panel">
+				<div class="wrap grid2">
+					<div>
+						<p class="label reveal">03 · 知识图谱 Graph</p>
+						<h2 class="statement reveal">笔记不是孤岛。</h2>
+						<p class="lead reveal">
+							每一处 [[ ]] 都把一篇笔记指向另一篇；标签把它们聚成星座。这张网会随写作慢慢长大。
+						</p>
+						<a class="btn reveal" href={withBase('/graph/')}>进入图谱 <span class="arr">→</span></a>
+					</div>
+					<div class="graph-preview reveal" style="--reveal-delay: 0.12s">
+						<MiniGraph nodes={miniNodes} links={miniLinks} />
+					</div>
+				</div>
+			</section>
+
+			<section class="panel">
+				<div class="wrap">
+					<p class="label reveal">04 · 关于 About</p>
+					<h2 class="statement reveal">你好，我是 CD。</h2>
+					<p class="lead reveal">
+						公开写作是强迫自己把想法写清楚的办法。想到什么，就写下来。
+					</p>
+					<a class="btn reveal" href={withBase('/about/')}>关于我 <span class="arr">→</span></a>
+				</div>
+			</section>
+
+			<Footer />
+		</div>
+		<Reveal />
 	</body>
 </html>
+
+<script>
+	// 首屏收缩 + 横向时间线，统一用一个 rAF 节流的滚动处理器
+	const hero = document.querySelector('.hero');
+	const pin = document.querySelector('.hero-pin');
+	const sec = document.querySelector('.h-scroll');
+	const track = document.querySelector('.h-track');
+	const bar = document.querySelector('.h-progress i');
+	let ticking = false;
+
+	function onScroll() {
+		if (ticking) return;
+		ticking = true;
+		requestAnimationFrame(() => {
+			ticking = false;
+			// 首屏：在钉扎区内缓缓收成卡片；收完正好被浅色页面盖上
+			if (hero && pin) {
+				const range = Math.max(1, pin.offsetHeight - window.innerHeight);
+				const p = Math.min(1, Math.max(0, window.scrollY / range));
+				hero.style.transform = `scale(${(1 - p * 0.07).toFixed(4)})`;
+				hero.style.borderRadius = `${(p * 30).toFixed(1)}px`;
+				hero.style.opacity = (1 - p * 0.35).toFixed(3);
+			}
+			if (sec && track) {
+				const rect = sec.getBoundingClientRect();
+				const total = sec.offsetHeight - window.innerHeight;
+				const hp = Math.min(1, Math.max(0, -rect.top / Math.max(total, 1)));
+				const dist = Math.max(0, track.scrollWidth - window.innerWidth + 48);
+				track.style.transform = `translateX(${(-hp * dist).toFixed(1)}px)`;
+				if (bar) bar.style.width = `${(hp * 100).toFixed(2)}%`;
+			}
+		});
+	}
+
+	document.addEventListener('scroll', onScroll, { passive: true });
+	onScroll();
+
+	// 统计数字：进入视口后从 0 滚动增长到真实值
+	const statsBox = document.getElementById('site-stats');
+	if (statsBox) {
+		const nums = Array.from(statsBox.querySelectorAll('[data-count]'));
+		const run = () => {
+			const t0 = performance.now();
+			const dur = 1500;
+			const step = (now) => {
+				const p = Math.min(1, (now - t0) / dur);
+				const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+				for (const el of nums) {
+					el.textContent = String(Math.round(Number(el.dataset.count) * e));
+				}
+				if (p < 1) requestAnimationFrame(step);
+			};
+			requestAnimationFrame(step);
+		};
+		const io = new IntersectionObserver(
+			(entries) => {
+				if (entries[0].isIntersecting) {
+					io.disconnect();
+					run();
+				}
+			},
+			{ threshold: 0.4 },
+		);
+		io.observe(statsBox);
+	}
+</script>
+
+<style>
+	/* ---------- 深空首屏：钉扎区让银河满屏停留更久 ---------- */
+	.hero-pin {
+		height: 240vh;
+	}
+	.hero {
+		position: sticky;
+		top: 0;
+		z-index: 0;
+		height: 100vh;
+		overflow: hidden;
+		background:
+			radial-gradient(1100px 700px at 82% -6%, rgba(90, 120, 200, 0.09), transparent 60%),
+			radial-gradient(900px 600px at -10% 30%, rgba(70, 100, 185, 0.06), transparent 60%),
+			#050505;
+	}
+	.hero-inner {
+		position: relative;
+		z-index: 1;
+		width: 100%;
+		max-width: none;
+		margin: 0 auto;
+		padding: 4em clamp(1.5em, 4vw, 3.5em) 4em clamp(2em, 7vw, 10em);
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		min-height: 100vh;
+	}
+	h1 {
+		font-size: clamp(4rem, 11vw, 8rem);
+		line-height: 1.02;
+		letter-spacing: 0.02em;
+		font-weight: 800;
+		margin: 0.18em 0 0.28em;
+	}
+	.lead {
+		color: var(--muted);
+		max-width: 30em;
+		font-size: 1.05rem;
+		margin: 0 0 2.2em;
+	}
+	.actions {
+		display: flex;
+		align-items: center;
+		gap: 1.2em;
+		flex-wrap: wrap;
+	}
+	/* 首屏里的按钮是深色底，单独翻成亮边框 */
+	.hero .btn {
+		border-color: rgba(255, 255, 255, 0.5);
+		color: #f2f3f5;
+	}
+	.hero .btn:hover {
+		background: #fff;
+		color: #000;
+	}
+	.hero .btn.text {
+		border: none;
+		color: var(--muted);
+	}
+	.hero .btn.text:hover {
+		background: none;
+		color: #fff;
+	}
+	.scroll-hint {
+		position: absolute;
+		bottom: 1.6em;
+		left: 50%;
+		transform: translateX(-50%);
+		color: var(--faint);
+		font-size: 1.1rem;
+		text-decoration: none;
+		animation: bob 2.4s ease-in-out infinite;
+	}
+	@keyframes bob {
+		50% {
+			transform: translate(-50%, 6px);
+		}
+	}
+
+	/* ---------- 浅色正文：一张从下方盖上来的纸 ---------- */
+	.page {
+		position: relative;
+		z-index: 1;
+		/* 背景交给固定的 SkyLight 画布来画（星云雾 + 星尘），这里保持透明 */
+		border-radius: 26px 26px 0 0;
+		box-shadow: 0 -18px 50px rgba(10, 12, 16, 0.35);
+		margin-top: -16vh; /* 上缘提前盖住钉扎区的尾巴，衔接更顺 */
+	}
+	.panel {
+		position: relative;
+		border-bottom: 1px solid var(--hairline-soft);
+		padding: 6em 0;
+	}
+	.sec-inner {
+		position: relative;
+		z-index: 1;
+	}
+	.statement {
+		font-size: clamp(2.2rem, 5vw, 3.8rem);
+		font-weight: 800;
+		margin: 0.4em 0 0.4em;
+	}
+	.lead {
+		color: var(--muted);
+		max-width: 30em;
+		font-size: 1.05rem;
+		margin: 0 0 2em;
+	}
+
+	/* ---------- 统计条 ---------- */
+	.stats {
+		display: flex;
+		gap: 2.5em;
+		list-style: none;
+		margin: 2.2em 0 2.6em;
+		padding: 0;
+	}
+	.stats li {
+		flex: 1;
+		border-left: 1px solid var(--hairline);
+		padding-left: 1.3em;
+	}
+	.stats strong {
+		display: block;
+		font-size: 2.6rem;
+		font-weight: 800;
+		line-height: 1.1;
+		color: var(--ink);
+	}
+	.stats span {
+		color: var(--faint);
+		font-size: 0.75rem;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+	}
+
+	/* ---------- 最新笔记行 ---------- */
+	.rows {
+		list-style: none;
+		margin: 0 0 2.6em;
+		padding: 0;
+		border-top: 1px solid var(--hairline-soft);
+	}
+	.rows li {
+		border-bottom: 1px solid var(--hairline-soft);
+	}
+	.rows a {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 2em;
+		padding: 1.4em 0;
+		text-decoration: none;
+	}
+	.rows h3 {
+		font-size: 1.45rem;
+		font-weight: 700;
+		margin: 0 0 0.3em;
+		color: var(--muted);
+		transition: color 0.2s ease;
+	}
+	.rows a:hover h3 {
+		color: var(--ink);
+	}
+	.rows .desc {
+		color: var(--faint);
+		margin: 0;
+		font-size: 0.88rem;
+	}
+	.rows .meta {
+		color: var(--faint);
+		font-size: 0.78rem;
+		white-space: nowrap;
+		display: flex;
+		align-items: baseline;
+		gap: 0.9em;
+	}
+	.rows .arr {
+		opacity: 0;
+		transform: translateX(-6px);
+		transition: opacity 0.25s ease, transform 0.25s ease;
+		color: var(--text);
+		font-size: 1rem;
+	}
+	.rows a:hover .arr {
+		opacity: 1;
+		transform: none;
+	}
+
+	/* ---------- 横向时间线 ---------- */
+	.h-scroll {
+		position: relative;
+		height: 340vh;
+	}
+	.h-sticky {
+		position: sticky;
+		top: 0;
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 2.4em;
+		overflow: hidden;
+		padding-top: 60px;
+	}
+	.h-head .hint {
+		color: var(--faint);
+		font-size: 0.85rem;
+		margin: 0.8em 0 0;
+	}
+	.h-progress {
+		height: 2px;
+		background: var(--hairline-soft);
+		margin-top: 1.6em;
+		max-width: var(--maxw);
+	}
+	.h-progress i {
+		display: block;
+		height: 100%;
+		width: 0;
+		background: var(--accent);
+	}
+	.h-track {
+		display: flex;
+		gap: 1.4em;
+		width: max-content;
+		padding: 0 max(1.5em, calc((100vw - var(--maxw)) / 2 + 1.5em));
+		will-change: transform;
+	}
+	.h-card {
+		position: relative;
+		width: 380px;
+		flex: none;
+		background: var(--surface);
+		border: 1px solid var(--hairline-soft);
+		border-radius: 16px;
+		padding: 1.7em 1.6em 1.5em;
+		text-decoration: none;
+		overflow: hidden;
+		transition: border-color 0.25s ease, transform 0.25s ease;
+	}
+	.h-card:hover {
+		border-color: var(--accent);
+		transform: translateY(-4px);
+	}
+	.h-card .num {
+		position: absolute;
+		top: -0.12em;
+		right: 0.18em;
+		font-size: 4.4rem;
+		font-weight: 800;
+		line-height: 1;
+		color: rgba(23, 25, 29, 0.055);
+		pointer-events: none;
+	}
+	.h-card h3 {
+		font-size: 1.2rem;
+		margin: 0.7em 0 0.4em;
+		color: var(--ink);
+	}
+	.h-card .desc {
+		color: var(--faint);
+		font-size: 0.86rem;
+		line-height: 1.65;
+		margin: 0 0 1.1em;
+	}
+	.h-card .more {
+		color: var(--accent);
+		font-size: 0.8rem;
+		letter-spacing: 0.1em;
+	}
+	.h-card .tag {
+		color: var(--accent);
+		border-color: rgba(217, 132, 73, 0.4);
+	}
+
+	/* ---------- 图谱预览 ---------- */
+	.grid2 {
+		display: grid;
+		grid-template-columns: 1.05fr 0.95fr;
+		gap: 4em;
+		align-items: center;
+	}
+	.graph-preview {
+		height: 420px;
+	}
+
+	@media (max-width: 900px) {
+		.grid2 {
+			grid-template-columns: 1fr;
+			gap: 2em;
+		}
+		.graph-preview {
+			height: 320px;
+		}
+		.hero {
+			height: 100svh;
+		}
+		.hero-inner {
+			min-height: 100svh;
+		}
+	}
+	@media (max-width: 720px) {
+		.panel {
+			padding: 4.5em 0;
+		}
+		.stats {
+			gap: 1.2em;
+		}
+		.stats strong {
+			font-size: 2rem;
+		}
+		.rows a {
+			flex-direction: column;
+			gap: 0.4em;
+		}
+		.h-card {
+			width: 300px;
+		}
+	}
+</style>

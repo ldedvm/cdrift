@@ -1,0 +1,120 @@
+---
+// 漂浮的笔记卡片：对应南孚"电池浮动"的效果——
+// 几张迷你笔记卡在区块里缓慢上下漂浮，纯 CSS 动画，纯装饰。
+---
+
+<div class="float-cards" aria-hidden="true">
+	<span class="fc fc1"></span>
+	<span class="fc fc2"></span>
+	<span class="fc fc3"></span>
+	<span class="fc fc4"></span>
+	<span class="fc fc5"></span>
+</div>
+
+<style>
+	.float-cards {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		overflow: hidden;
+	}
+	.fc {
+		position: absolute;
+		display: block;
+		background: var(--surface);
+		border: 1px solid var(--hairline);
+		border-radius: 10px;
+		box-shadow: 0 14px 40px rgba(23, 25, 29, 0.08);
+		opacity: 0.85;
+	}
+	/* 卡内的"文字行" */
+	.fc::before {
+		content: '';
+		position: absolute;
+		left: 12%;
+		right: 30%;
+		top: 22%;
+		height: 3px;
+		border-radius: 2px;
+		background: var(--hairline);
+		box-shadow: 0 9px 0 var(--hairline-soft), 0 18px 0 var(--hairline-soft);
+	}
+	.fc::after {
+		content: '';
+		position: absolute;
+		left: 12%;
+		top: 62%;
+		width: 22%;
+		height: 5px;
+		border-radius: 3px;
+		background: var(--accent);
+		opacity: 0.75;
+	}
+	.fc1 {
+		width: 92px;
+		height: 62px;
+		left: 4%;
+		top: 12%;
+		animation: floaty 7s ease-in-out infinite;
+	}
+	.fc2 {
+		width: 70px;
+		height: 48px;
+		left: 16%;
+		bottom: 10%;
+		animation: floaty 9s ease-in-out infinite reverse;
+	}
+	.fc3 {
+		width: 56px;
+		height: 40px;
+		right: 8%;
+		top: 18%;
+		animation: floaty 8s ease-in-out infinite;
+		animation-delay: -2s;
+	}
+	.fc4 {
+		width: 80px;
+		height: 54px;
+		right: 18%;
+		bottom: 14%;
+		animation: floaty 10s ease-in-out infinite reverse;
+		animation-delay: -4s;
+	}
+	.fc5 {
+		width: 46px;
+		height: 34px;
+		left: 44%;
+		top: 6%;
+		animation: floaty 6.5s ease-in-out infinite;
+		animation-delay: -1s;
+	}
+	@keyframes floaty {
+		0%,
+		100% {
+			transform: translateY(0) rotate(var(--tilt, -2deg));
+		}
+		50% {
+			transform: translateY(-14px) rotate(calc(var(--tilt, -2deg) * -1));
+		}
+	}
+	.fc1 {
+		--tilt: -3deg;
+	}
+	.fc2 {
+		--tilt: 2.5deg;
+	}
+	.fc3 {
+		--tilt: 3deg;
+	}
+	.fc4 {
+		--tilt: -2deg;
+	}
+	.fc5 {
+		--tilt: 4deg;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.fc {
+			animation: none;
+		}
+	}
+</style>

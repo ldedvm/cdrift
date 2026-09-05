@@ -1,0 +1,42 @@
+---
+// 滚动字幕带：品牌词缓慢循环，像帧间的呼吸
+const words = ['记录', '思考', '连接', '双链', '图谱', '星河'];
+const phrase = words.join(' · ') + ' · ';
+---
+
+<div class="ticker" aria-hidden="true">
+	<div class="track">
+		<span>{phrase.repeat(4)}</span>
+		<span>{phrase.repeat(4)}</span>
+	</div>
+</div>
+<style>
+	.ticker {
+		overflow: hidden;
+		border-bottom: 1px solid var(--hairline-soft);
+		padding: 1.1em 0;
+		background: rgba(255, 255, 255, 0.012);
+	}
+	.track {
+		display: flex;
+		width: max-content;
+		animation: slide 46s linear infinite;
+	}
+	.track span {
+		white-space: nowrap;
+		font-size: 0.72rem;
+		letter-spacing: 0.42em;
+		text-transform: uppercase;
+		color: var(--faint);
+	}
+	@keyframes slide {
+		to {
+			transform: translateX(-50%);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.track {
+			animation: none;
+		}
+	}
+</style>

@@ -13,8 +13,28 @@ type Props = CollectionEntry<'blog'>;
 
 const post = Astro.props;
 const { Content } = await render(post);
+
+// 阅读时长：按中文约每分钟 400 字估算
+const readingTime = Math.max(1, Math.round((post.body ?? '').replace(/\s/g, '').length / 400));
+
+// 反向链接：正文中用 [[本篇文件名]] 引用了本篇的其他笔记
+// （Astro 的内容 id 统一是小写，而 Obsidian 双链常带原大小写，所以忽略大小写匹配）
+const backlinks = (await getCollection('blog'))
+	.filter((p) => p.id !== post.id)
+	.filter((p) => (p.body ?? '').toLowerCase().includes(`[[${post.id}`))
+	.map((p) => ({ id: p.id, title: p.data.title }));
+
+// 相关笔记：共享标签最多的前两篇
+const myTags = new Set(post.data.tags ?? []);
+const related = (await getCollection('blog'))
+	.filter((p) => p.id !== post.id)
+	.map((p) => ({ p, shared: (p.data.tags ?? []).filter((t) => myTags.has(t)).length }))
+	.filter((x) => x.shared > 0)
+	.sort((a, b) => b.shared - a.shared)
+	.slice(0, 2)
+	.map((x) => ({ id: x.p.id, title: x.p.data.title }));
 ---
 
-<BlogPost {...post.data}>
+<BlogPost {...post.data} readingTime={readingTime} backlinks={backlinks} related={related}>
 	<Content />
 </BlogPost>

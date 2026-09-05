@@ -1,0 +1,205 @@
+---
+// 首页 Hero 的 three.js 粒子星系。
+// 采用 GitHub 上最经典的开源 three.js Galaxy Generator 方案（螺旋分布 + 顶点着色 +
+// 加色混合），约 20000 粒子 + 拉长炽核 + 远景星野，透视相机呈现倾斜纵深感。
+// 页面滚出视口时自动暂停渲染。需要父元素 position: relative 且 overflow: hidden。
+---
+
+<div class="galaxy-mount" aria-hidden="true"></div>
+
+<style>
+	.galaxy-mount {
+		position: absolute;
+		inset: 0;
+	}
+	.galaxy-mount :global(canvas) {
+		display: block;
+		width: 100% !important;
+		height: 100% !important;
+	}
+</style>
+
+<script>
+	import * as THREE from 'three';
+
+	const mount = document.querySelector('.galaxy-mount');
+	if (mount) {
+		const REDUCE = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		const scene = new THREE.Scene();
+		const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 100);
+		camera.position.set(2.6, 1.7, 4.4);
+		camera.lookAt(0, 0, 0);
+
+		const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+		renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+		mount.appendChild(renderer.domElement);
+
+		function fit() {
+			const rect = mount.getBoundingClientRect();
+			const w = Math.max(rect.width, 10);
+			const h = Math.max(rect.height, 10);
+			renderer.setSize(w, h, false);
+			camera.aspect = w / h;
+			camera.updateProjectionMatrix();
+		}
+
+		// 圆形柔光贴图：没有它 Points 会渲染成方块
+		function makeDotTexture() {
+			const c = document.createElement('canvas');
+			c.width = c.height = 64;
+			const g = c.getContext('2d');
+			const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+			grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+			grad.addColorStop(0.4, 'rgba(255, 255, 255, 0.32)');
+			grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+			g.fillStyle = grad;
+			g.fillRect(0, 0, 64, 64);
+			return new THREE.CanvasTexture(c);
+		}
+		const dotTexture = makeDotTexture();
+
+		// ---------- 参数（GitHub 上广为流传的 Galaxy Generator 参数思路） ----------
+		const COUNT = 20000;
+		const RADIUS = 5.2;
+		const BRANCHES = 3;
+		const SPIN = 1.15;
+		const RANDOMNESS = 0.32;
+		const RANDOMNESS_POWER = 3.1;
+		const INSIDE = new THREE.Color('#fff6e4'); // 炽白核心
+		const OUTSIDE = new THREE.Color('#4d7fd6'); // 冷蓝外围
+
+		// 主旋臂
+		const galaxyGeo = new THREE.BufferGeometry();
+		{
+			const positions = new Float32Array(COUNT * 3);
+			const colors = new Float32Array(COUNT * 3);
+			const mixed = new THREE.Color();
+			for (let i = 0; i < COUNT; i++) {
+				const i3 = i * 3;
+				const r = Math.random() * RADIUS;
+				const spinAngle = r * SPIN;
+				const branchAngle = ((i % BRANCHES) / BRANCHES) * Math.PI * 2;
+				const rp = Math.pow(Math.random(), RANDOMNESS_POWER);
+				const rx = rp * (Math.random() < 0.5 ? 1 : -1) * RANDOMNESS * r;
+				const ry = rp * (Math.random() < 0.5 ? 1 : -1) * RANDOMNESS * r * 0.45;
+				const rz = rp * (Math.random() < 0.5 ? 1 : -1) * RANDOMNESS * r;
+				positions[i3] = Math.cos(branchAngle + spinAngle) * r + rx;
+				positions[i3 + 1] = ry;
+				positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * r + rz;
+				mixed.copy(INSIDE).lerp(OUTSIDE, Math.min(1, (r / RADIUS) * 1.25));
+				colors[i3] = mixed.r;
+				colors[i3 + 1] = mixed.g;
+				colors[i3 + 2] = mixed.b;
+			}
+			galaxyGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+			galaxyGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+		}
+		const galaxyMat = new THREE.PointsMaterial({
+			size: 0.032,
+			sizeAttenuation: true,
+			depthWrite: false,
+			blending: THREE.AdditiveBlending,
+			vertexColors: true,
+			map: dotTexture,
+			transparent: true,
+		});
+		const galaxy = new THREE.Points(galaxyGeo, galaxyMat);
+		galaxy.rotation.x = 0.35; // 倾斜出纵深感
+		scene.add(galaxy);
+
+		// 炽亮核心：小而亮的大粒子团
+		const coreGeo = new THREE.BufferGeometry();
+		{
+			const N = 900;
+			const positions = new Float32Array(N * 3);
+			const colors = new Float32Array(N * 3);
+			for (let i = 0; i < N; i++) {
+				const i3 = i * 3;
+				const r = Math.pow(Math.random(), 2.4) * 0.75;
+				const a = Math.random() * Math.PI * 2;
+				positions[i3] = Math.cos(a) * r;
+				positions[i3 + 1] = (Math.random() - 0.5) * 0.18;
+				positions[i3 + 2] = Math.sin(a) * r;
+				colors[i3] = 1;
+				colors[i3 + 1] = 0.97;
+				colors[i3 + 2] = 0.9;
+			}
+			coreGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+			coreGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+		}
+		const coreMat = new THREE.PointsMaterial({
+			size: 0.1,
+			sizeAttenuation: true,
+			depthWrite: false,
+			blending: THREE.AdditiveBlending,
+			vertexColors: true,
+			map: dotTexture,
+			transparent: true,
+		});
+		const core = new THREE.Points(coreGeo, coreMat);
+		core.rotation.x = 0.35;
+		scene.add(core);
+
+		// 远景星野：稀疏的暗粒子铺满周边
+		const farGeo = new THREE.BufferGeometry();
+		{
+			const N = 700;
+			const positions = new Float32Array(N * 3);
+			for (let i = 0; i < N; i++) {
+				positions[i * 3] = (Math.random() - 0.5) * 16;
+				positions[i * 3 + 1] = (Math.random() - 0.5) * 10;
+				positions[i * 3 + 2] = (Math.random() - 0.5) * 12 - 3;
+			}
+			farGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+		}
+		const farMat = new THREE.PointsMaterial({
+			size: 0.02,
+			color: '#8fa3c8',
+			transparent: true,
+			opacity: 0.55,
+			depthWrite: false,
+			blending: THREE.AdditiveBlending,
+			map: dotTexture,
+		});
+		const far = new THREE.Points(farGeo, farMat);
+		scene.add(far);
+
+		// ---------- 渲染循环：滚出视口自动暂停 ----------
+		let visible = true;
+		let elapsed = 0;
+		let last = performance.now();
+
+		function render(now) {
+			const dt = (now - last) / 1000;
+			last = now;
+			if (visible && !REDUCE) {
+				elapsed += dt;
+				galaxy.rotation.y = elapsed * 0.075;
+				core.rotation.y = elapsed * 0.09;
+				far.rotation.y = -elapsed * 0.008;
+			}
+			renderer.render(scene, camera);
+		}
+
+		let raf = 0;
+		function loop(now) {
+			render(now);
+			raf = requestAnimationFrame(loop);
+		}
+
+		if (REDUCE) {
+			render(0);
+		} else {
+			raf = requestAnimationFrame(loop);
+			new IntersectionObserver((entries) => {
+				visible = entries[0].isIntersecting;
+			}).observe(mount);
+		}
+
+		window.addEventListener('resize', () => {
+			fit();
+			if (REDUCE) render(0);
+		});
+		fit();
+	}
+</script>

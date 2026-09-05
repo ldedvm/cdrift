@@ -5,82 +5,201 @@ import BaseHead from '../components/BaseHead.astro';
 import Footer from '../components/Footer.astro';
 import FormattedDate from '../components/FormattedDate.astro';
 import Header from '../components/Header.astro';
+import Reveal from '../components/Reveal.astro';
+import SkyLight from '../components/SkyLight.astro';
+import { withBase } from '../consts';
 
-type Props = CollectionEntry<'blog'>['data'];
+// 文章页与关于页共用；关于页等静态页面可以不传日期
+type Props = Omit<CollectionEntry<'blog'>['data'], 'pubDate'> & {
+	pubDate?: Date;
+	readingTime?: number;
+	backlinks?: { id: string; title: string }[];
+	related?: { id: string; title: string }[];
+};
 
-const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
+const {
+	title,
+	description,
+	pubDate,
+	updatedDate,
+	heroImage,
+	tags,
+	readingTime,
+	backlinks = [],
+	related = [],
+} = Astro.props;
 ---
 
-<html lang="en">
+<html lang="zh-CN">
 	<head>
 		<BaseHead title={title} description={description} />
 		<style>
-			main {
-				width: calc(100% - 2em);
-				max-width: 100%;
-				margin: 0;
+			.read-progress {
+				position: fixed;
+				top: 0;
+				left: 0;
+				height: 2px;
+				width: 0%;
+				background: var(--accent);
+				z-index: 60;
+				pointer-events: none;
 			}
 			.hero-image {
-				width: 100%;
+				max-width: 920px;
+				margin: 3em auto 0;
 			}
 			.hero-image img {
 				display: block;
-				margin: 0 auto;
-				border-radius: 12px;
-				box-shadow: var(--box-shadow);
+				width: 100%;
+				border-radius: 3px;
 			}
 			.prose {
 				width: 720px;
-				max-width: calc(100% - 2em);
-				margin: auto;
-				padding: 1em;
-				color: rgb(var(--gray-dark));
-			}
-			.title {
-				margin-bottom: 1em;
-				padding: 1em 0;
-				text-align: center;
-				line-height: 1;
+				max-width: calc(100% - 2.4em);
+				margin: 0 auto;
+				padding-top: 2em;
 			}
 			.title h1 {
-				margin: 0 0 0.5em 0;
+				font-size: clamp(2rem, 5vw, 3rem);
+				font-weight: 800;
+				margin: 0.2em 0 0.4em;
 			}
 			.date {
-				margin-bottom: 0.5em;
-				color: rgb(var(--gray));
+				color: var(--faint);
+				font-size: 0.8rem;
+				letter-spacing: 0.1em;
+				margin: 0 0 0.8em;
 			}
 			.last-updated-on {
 				font-style: italic;
+				margin-left: 1em;
+			}
+			.footnotes {
+				width: 720px;
+				max-width: calc(100% - 2.4em);
+				margin: 3em auto 0;
+				border-top: 1px solid var(--hairline-soft);
+				padding-top: 2em;
+			}
+			.footnotes ul {
+				list-style: none;
+				margin: 1.2em 0 0;
+				padding: 0;
+			}
+			.footnotes li {
+				border-bottom: 1px solid var(--hairline-soft);
+			}
+			.footnotes a {
+				display: flex;
+				justify-content: space-between;
+				align-items: baseline;
+				gap: 1em;
+				padding: 0.9em 0;
+				text-decoration: none;
+				color: var(--muted);
+				transition: color 0.2s ease;
+			}
+			.footnotes a:hover {
+				color: var(--text);
+			}
+			.footnotes .arr {
+				opacity: 0;
+				transition: opacity 0.2s ease;
+			}
+			.footnotes a:hover .arr {
+				opacity: 1;
 			}
 		</style>
 	</head>
 
 	<body>
 		<Header />
-		<main>
-			<article>
-				<div class="hero-image">
-					{heroImage && <Image width={1020} height={510} src={heroImage} alt="" />}
-				</div>
-				<div class="prose">
-					<div class="title">
-						<div class="date">
-							<FormattedDate date={pubDate} />
-							{
-								updatedDate && (
-									<div class="last-updated-on">
-										Last updated on <FormattedDate date={updatedDate} />
-									</div>
-								)
-							}
-						</div>
-						<h1>{title}</h1>
-						<hr />
+		<SkyLight />
+		<div class="read-progress" aria-hidden="true"></div>
+		<main class="wrap">
+			{
+				heroImage && (
+					<div class="hero-image reveal">
+						<Image width={1020} height={510} src={heroImage} alt="" />
 					</div>
-					<slot />
+				)
+			}
+			<div class="prose" data-reveal-children>
+				<div class="title">
+					{
+						pubDate && (
+							<p class="date">
+								<FormattedDate date={pubDate} />
+								{readingTime && <span> · 约 {readingTime} 分钟</span>}
+								{updatedDate && (
+									<span class="last-updated-on">
+										最后更新于 <FormattedDate date={updatedDate} />
+									</span>
+								)}
+							</p>
+						)
+					}
+					<h1>{title}</h1>
+					{tags && tags.length > 0 && (
+						<ul class="tags">
+							{tags.map((t) => (
+								<li class="tag">{t}</li>
+							))}
+						</ul>
+					)}
+					<hr />
 				</div>
-			</article>
+				<slot />
+			</div>
+			{
+				backlinks.length > 0 && (
+					<aside class="footnotes reveal">
+						<p class="label">反向链接 · Backlinks</p>
+						<ul>
+							{backlinks.map((b) => (
+								<li>
+									<a href={withBase(`/blog/${b.id}/`)}>
+										{b.title}
+										<span class="arr" aria-hidden="true">→</span>
+									</a>
+								</li>
+							))}
+						</ul>
+					</aside>
+				)
+			}
+			{
+				related.length > 0 && (
+					<aside class="footnotes reveal">
+						<p class="label">相关笔记 · Related</p>
+						<ul>
+							{related.map((r) => (
+								<li>
+									<a href={withBase(`/blog/${r.id}/`)}>
+										{r.title}
+										<span class="arr" aria-hidden="true">→</span>
+									</a>
+								</li>
+							))}
+						</ul>
+					</aside>
+				)
+			}
 		</main>
 		<Footer />
+		<Reveal />
+		<script>
+			// 顶部阅读进度条
+			const bar = document.querySelector('.read-progress');
+			if (bar) {
+				const update = () => {
+					const el = document.documentElement;
+					const max = el.scrollHeight - el.clientHeight;
+					bar.style.width = `${max > 0 ? (el.scrollTop / max) * 100 : 0}%`;
+				};
+				document.addEventListener('scroll', update, { passive: true });
+				update();
+			}
+		</script>
 	</body>
 </html>
