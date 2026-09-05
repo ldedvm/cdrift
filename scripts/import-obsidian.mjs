@@ -52,7 +52,12 @@ for (const vault of vaults) {
 		for (const l of bodyLines) {
 			const t = l.trim();
 			if (!t || /^#{1,6}\s/.test(t)) continue;
-			description = t.replace(/^[-*]\s*/, '').replace(/`/g, '').trim();
+			description = t
+				.replace(/^[-*]\s*/, '')
+				.replace(/^>\s*/, '') // 引用标记
+				.replace(/\*\*/g, '') // 加粗标记
+				.replace(/`/g, '')
+				.trim();
 			break;
 		}
 		if (description.length > 64) description = description.slice(0, 64) + '…';
