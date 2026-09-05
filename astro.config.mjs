@@ -5,11 +5,9 @@ import sitemap from '@astrojs/sitemap';
 import { defineConfig } from 'astro/config';
 import remarkWikilinks from './src/plugins/remark-wikilinks.mjs';
 
-// 部署目标：
-// - 现阶段：GitHub Pages 项目站 https://ldedvm.github.io/cdrift/
-// - 绑定自定义域名后：把 site 改成 'https://你的域名'，base 改成 '/'，即可切换
-const SITE = 'https://ldedvm.github.io';
-const BASE = '/cdrift';
+// 部署目标：自定义域名 https://cdrift.cn（GitHub Pages 托管）
+const SITE = 'https://cdrift.cn';
+const BASE = '/';
 
 // https://astro.build/config
 export default defineConfig({
