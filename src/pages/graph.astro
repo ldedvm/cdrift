@@ -23,7 +23,8 @@ const graph = JSON.stringify({ nodes, links });
 			<Stars />
 			<div class="hud">
 				<p class="label">知识图谱 · Graph</p>
-				<p class="hint">{nodes.length} 篇笔记 · {links.length} 条连接 — 拖动节点，点击进入</p>
+				<p class="hint">{nodes.length} 篇笔记 · {links.length} 条连接 — 拖动节点，点击进入；双指或滚轮缩放</p>
+				<button id="fit-btn" type="button">⤢ 全览</button>
 			</div>
 			<canvas id="graph-canvas" aria-label="笔记知识图谱"></canvas>
 			<script is:inline type="application/json" id="graph-data" set:html={graph} />
@@ -59,6 +60,23 @@ const graph = JSON.stringify({ nodes, links });
 		pointer-events: none;
 		z-index: 1;
 	}
+	#fit-btn {
+		margin-top: 0.8em;
+		padding: 0.45em 1.1em;
+		font: 600 0.75rem/1 -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+		letter-spacing: 0.1em;
+		color: var(--muted);
+		background: rgba(255, 255, 255, 0.06);
+		border: 1px solid rgba(255, 255, 255, 0.25);
+		border-radius: 999px;
+		cursor: pointer;
+		pointer-events: auto;
+		transition: color 0.2s ease, border-color 0.2s ease;
+	}
+	#fit-btn:hover {
+		color: #fff;
+		border-color: rgba(255, 255, 255, 0.6);
+	}
 	.hint {
 		color: var(--faint);
 		font-size: 0.8rem;
@@ -70,30 +88,39 @@ const graph = JSON.stringify({ nodes, links });
 <script>
 	const dataEl = document.getElementById('graph-data');
 	const canvas = document.getElementById('graph-canvas');
+	const fitBtn = document.getElementById('fit-btn');
 	if (dataEl && canvas) {
-		const raw = JSON.parse(dataEl.textContent || '{"nodes":[],"links":[]}');
 		const ctx = canvas.getContext('2d');
 		if (ctx) {
-			const degrees = new Map();
-			for (const l of raw.links) {
-				degrees.set(l.source, (degrees.get(l.source) || 0) + 1);
-				degrees.set(l.target, (degrees.get(l.target) || 0) + 1);
-			}
-
+			const raw = JSON.parse(dataEl.textContent || '{"nodes":[],"links":[]}');
+			const REDUCE = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+			let dpr = 1;
 			let w = 0;
 			let h = 0;
 			let nodes = [];
 			const links = raw.links;
+			const nodeById = new Map();
+			const degrees = new Map();
+			for (const l of links) {
+				degrees.set(l.source, (degrees.get(l.source) || 0) + 1);
+				degrees.set(l.target, (degrees.get(l.target) || 0) + 1);
+			}
+
+			// 视图变换：屏幕坐标 = 世界坐标 * scale + 偏移
+			const view = { x: 0, y: 0, scale: 1 };
+			let userModified = false; // 用户一旦缩放/平移，就不再自动适配
+
+			const toWorld = (sx, sy) => ({ x: (sx - view.x) / view.scale, y: (sy - view.y) / view.scale });
+			const toScreen = (x, y) => ({ x: x * view.scale + view.x, y: y * view.scale + view.y });
 
 			function resize() {
 				const rect = canvas.parentElement.getBoundingClientRect();
-				const dpr = Math.min(window.devicePixelRatio || 1, 2);
+				dpr = Math.min(window.devicePixelRatio || 1, 2);
 				w = rect.width;
 				h = rect.height;
 				canvas.width = w * dpr;
 				canvas.height = h * dpr;
-				ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-				const R = Math.min(w, h) * 0.32;
+				const R = Math.min(w, h) * 0.42;
 				nodes = raw.nodes.map((n, i) => {
 					const a = (i / Math.max(raw.nodes.length, 1)) * Math.PI * 2;
 					const degree = degrees.get(n.id) || 0;
@@ -109,17 +136,50 @@ const graph = JSON.stringify({ nodes, links });
 				});
 				nodeById.clear();
 				for (const n of nodes) nodeById.set(n.id, n);
+				userModified = false; // 重新自动适配
 				alpha = 1;
 				ensureLoop();
 			}
 
+			// 自动适配：把所有节点框进画布（留边距），返回目标视图
+			function computeFit() {
+				if (!nodes.length) return null;
+				let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+				for (const n of nodes) {
+					if (n.x < minX) minX = n.x;
+					if (n.x > maxX) maxX = n.x;
+					if (n.y < minY) minY = n.y;
+					if (n.y > maxY) maxY = n.y;
+				}
+				const pad = 50;
+				const bw = Math.max(maxX - minX, 1);
+				const bh = Math.max(maxY - minY, 1);
+				const scale = Math.max(0.04, Math.min((w - pad * 2) / bw, (h - pad * 2) / bh, 1.5));
+				return {
+					scale,
+					x: w / 2 - ((minX + maxX) / 2) * scale,
+					y: h / 2 - ((minY + maxY) / 2) * scale,
+				};
+			}
+
+			function fitView() {
+				userModified = false;
+				alpha = Math.max(alpha, 0.1);
+			}
+			fitBtn?.addEventListener('click', fitView);
+
 			let alpha = 1;
 			let running = false;
+			let hoverNode = null;
+			let dragging = null;
+			let dragMoved = false;
+			let panLast = null;
+			let pinch = null;
+			const pointers = new Map();
 
 			function tick() {
-				// 力度跟随模拟活跃度：初始布局全力，拖拽/稳定时只剩零头，松手才会缓缓归位
+				// 力度跟随模拟活跃度：稳定后只剩零头，动作都变得柔和
 				const fs = Math.min(1, alpha * 2.2);
-				// 斥力
 				for (let i = 0; i < nodes.length; i++) {
 					for (let j = i + 1; j < nodes.length; j++) {
 						const a = nodes[i];
@@ -140,10 +200,9 @@ const graph = JSON.stringify({ nodes, links });
 						b.vy -= (dy / d) * f;
 					}
 				}
-				// 连线弹力（软弹簧：低系数 + 加长自然长度）
 				for (const l of links) {
-					const a = nodes.find((n) => n.id === l.source);
-					const b = nodes.find((n) => n.id === l.target);
+					const a = nodeById.get(l.source);
+					const b = nodeById.get(l.target);
 					if (!a || !b) continue;
 					const dx = b.x - a.x;
 					const dy = b.y - a.y;
@@ -154,7 +213,6 @@ const graph = JSON.stringify({ nodes, links });
 					b.vx -= (dx / d) * f;
 					b.vy -= (dy / d) * f;
 				}
-				// 向心 + 阻尼 + 限速：每帧位移封顶，杜绝猛弹
 				for (const n of nodes) {
 					n.vx += (w / 2 - n.x) * 0.003 * fs;
 					n.vy += (h / 2 - n.y) * 0.003 * fs;
@@ -170,19 +228,25 @@ const graph = JSON.stringify({ nodes, links });
 				alpha *= 0.995;
 			}
 
-			function draw() {
+			function draw(t) {
+				ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 				ctx.clearRect(0, 0, w, h);
-				ctx.lineWidth = 1;
+
+				// 世界层：节点与连线
+				ctx.save();
+				ctx.translate(view.x, view.y);
+				ctx.scale(view.scale, view.scale);
+				ctx.lineWidth = 1 / view.scale;
 				ctx.strokeStyle = 'rgba(255, 255, 255, 0.26)';
+				ctx.beginPath();
 				for (const l of links) {
 					const a = nodeById.get(l.source);
 					const b = nodeById.get(l.target);
 					if (!a || !b) continue;
-					ctx.beginPath();
 					ctx.moveTo(a.x, a.y);
 					ctx.lineTo(b.x, b.y);
-					ctx.stroke();
 				}
+				ctx.stroke();
 				for (const n of nodes) {
 					const hovered = n === hoverNode;
 					const isHub = (degrees.get(n.id) || 0) >= 8;
@@ -192,97 +256,174 @@ const graph = JSON.stringify({ nodes, links });
 					ctx.fill();
 					if (hovered) {
 						ctx.beginPath();
-						ctx.arc(n.x, n.y, n.r + 5, 0, Math.PI * 2);
+						ctx.arc(n.x, n.y, n.r + 5 / view.scale, 0, Math.PI * 2);
 						ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
 						ctx.stroke();
 					}
-					ctx.font = '12px -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif';
-					ctx.textAlign = 'center';
-					// 笔记很多时只标注枢纽和悬停的节点，避免文字糊成一片
-					if (nodes.length <= 40 || hovered || isHub) {
-						ctx.fillStyle = hovered ? '#ffffff' : 'rgba(255, 255, 255, 0.45)';
-						ctx.fillText(n.title, n.x, n.y + n.r + 16);
-					}
+				}
+				ctx.restore();
+
+				// 标签层：屏幕空间绘制，字号不随缩放变形
+				ctx.font = '12px -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif';
+				ctx.textAlign = 'center';
+				for (const n of nodes) {
+					const isHub = (degrees.get(n.id) || 0) >= 8;
+					const hovered = n === hoverNode;
+					if (!(nodes.length <= 16 || isHub || hovered)) continue;
+					const s = toScreen(n.x, n.y);
+					if (s.x < -100 || s.x > w + 100 || s.y < -20 || s.y > h + 20) continue;
+					ctx.fillStyle = hovered ? '#ffffff' : 'rgba(255, 255, 255, 0.5)';
+					ctx.fillText(n.title, s.x, s.y + n.r * view.scale + 15);
 				}
 			}
 
-			const nodeById = new Map();
 			function ensureLoop() {
 				if (running) return;
 				running = true;
-				const frame = () => {
-					if (alpha > 0.02 || dragging) {
-						tick();
+				const frame = (now) => {
+					const t = now / 1000;
+					if (alpha > 0.02 || dragging || pointers.size) tick();
+					// 用户没动过视图时，温和地自动适配全览
+					if (!userModified) {
+						const fit = computeFit();
+						if (fit) {
+							view.x += (fit.x - view.x) * 0.08;
+							view.y += (fit.y - view.y) * 0.08;
+							view.scale += (fit.scale - view.scale) * 0.08;
+						}
 					}
-					draw();
+					draw(t);
 					requestAnimationFrame(frame);
 				};
 				requestAnimationFrame(frame);
 			}
 
-			let hoverNode = null;
-			let dragging = null;
-			let dragMoved = false;
-			let mouse = { x: -9999, y: -9999 };
-
-			function nodeAt(x, y) {
+			function nodeAt(sx, sy) {
+				const p = toWorld(sx, sy);
 				for (const n of nodes) {
-					const dx = n.x - x;
-					const dy = n.y - y;
-					if (dx * dx + dy * dy <= (n.r + 8) ** 2) return n;
+					const dx = n.x - p.x;
+					const dy = n.y - p.y;
+					if (dx * dx + dy * dy <= (n.r + 8 / view.scale) ** 2) return n;
 				}
 				return null;
 			}
 
-			function toLocal(e) {
-				const rect = canvas.getBoundingClientRect();
-				return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+			function startPinch() {
+				const pts = [...pointers.values()];
+				const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+				pinch = {
+					d: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+					worldMid: toWorld(mid.x, mid.y),
+					scale: view.scale,
+				};
+				dragging = null;
+				panLast = null;
 			}
 
-			// 用 pointer 事件：鼠标和触屏都能拖拽
+			canvas.addEventListener('pointerdown', (e) => {
+				canvas.setPointerCapture(e.pointerId);
+				pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+				if (pointers.size === 1) {
+					const n = nodeAt(e.offsetX, e.offsetY);
+					if (n) {
+						dragging = n;
+						dragMoved = false;
+						alpha = Math.max(alpha, 0.12);
+						canvas.style.cursor = 'grabbing';
+					} else {
+						panLast = { x: e.offsetX, y: e.offsetY };
+						userModified = true;
+					}
+				} else if (pointers.size === 2) {
+					startPinch();
+					userModified = true;
+				}
+			});
+
 			canvas.addEventListener('pointermove', (e) => {
-				const p = toLocal(e);
-				mouse = p;
+				const x = e.offsetX;
+				const y = e.offsetY;
+				if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x, y });
+
+				if (pointers.size >= 2) {
+					// 双指捏合缩放
+					if (!pinch) startPinch();
+					const pts = [...pointers.values()];
+					const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+					const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+					view.scale = Math.max(0.05, Math.min(5, pinch.scale * (d / pinch.d)));
+					view.x = mid.x - pinch.worldMid.x * view.scale;
+					view.y = mid.y - pinch.worldMid.y * view.scale;
+					alpha = Math.max(alpha, 0.1);
+					return;
+				}
+
 				if (dragging) {
+					const p = toWorld(x, y);
 					dragging.x = p.x;
 					dragging.y = p.y;
 					dragging.vx = 0;
 					dragging.vy = 0;
 					dragMoved = true;
 					alpha = Math.max(alpha, 0.12);
+					userModified = true;
+				} else if (panLast) {
+					// 拖空白处平移视图
+					view.x += x - panLast.x;
+					view.y += y - panLast.y;
+					panLast = { x, y };
 				} else {
-					hoverNode = nodeAt(p.x, p.y);
+					hoverNode = nodeAt(x, y);
 					canvas.style.cursor = hoverNode ? 'pointer' : 'default';
 				}
 			});
 
-			canvas.addEventListener('pointerdown', (e) => {
-				const p = toLocal(e);
-				const n = nodeAt(p.x, p.y);
-				if (n) {
-					dragging = n;
-					dragMoved = false;
-					canvas.style.cursor = 'grabbing';
-					e.preventDefault();
-				}
-			});
-
-			window.addEventListener('pointerup', () => {
+			function endPointer(e) {
+				pointers.delete(e.pointerId);
+				pinch = null;
 				if (dragging && !dragMoved) {
 					const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
 					location.href = `${base}/blog/${dragging.id}/`;
 				}
 				dragging = null;
-				canvas.style.cursor = hoverNode ? 'pointer' : 'default';
-			});
-
-			canvas.addEventListener('pointerleave', () => {
+				panLast = null;
 				hoverNode = null;
-				mouse = { x: -9999, y: -9999 };
-			});
+				canvas.style.cursor = 'default';
+			}
+			canvas.addEventListener('pointerup', endPointer);
+			canvas.addEventListener('pointercancel', endPointer);
+
+			// 桌面滚轮缩放（以光标为锚点）
+			canvas.addEventListener(
+				'wheel',
+				(e) => {
+					e.preventDefault();
+					const rect = canvas.getBoundingClientRect();
+					const mx = e.clientX - rect.left;
+					const my = e.clientY - rect.top;
+					const factor = Math.exp(-e.deltaY * 0.0015);
+					const newScale = Math.max(0.05, Math.min(5, view.scale * factor));
+					view.x = mx - (mx - view.x) * (newScale / view.scale);
+					view.y = my - (my - view.y) * (newScale / view.scale);
+					view.scale = newScale;
+					userModified = true;
+				},
+				{ passive: false },
+			);
 
 			window.addEventListener('resize', resize);
 			resize();
+
+			if (REDUCE) {
+				const fit = computeFit();
+				if (fit) Object.assign(view, fit);
+				draw(0);
+			} else {
+				ensureLoop();
+			}
 		}
 	}
 </script>
+
+
+</html>
